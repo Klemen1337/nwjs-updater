@@ -1,0 +1,13 @@
+{
+  "name": "nwjs-updater",
+  "description": "NWJS Updater",
+  "keywords": [
+    "update",
+    "autoupdate",
+    "nwjs",
+    "nw"
+  ],
+  "version": "0.0.1",
+  "author": "Klemen Kastelic <klemen@olaii.com>",
+  "main": "nwjs-updater.js"
+}
