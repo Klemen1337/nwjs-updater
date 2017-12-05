@@ -7,7 +7,7 @@
     "nwjs",
     "nw"
   ],
-  "version": "0.0.1",
+  "version": "0.0.5",
   "author": "Klemen Kastelic <klemen@olaii.com>",
   "main": "nwjs-updater.js"
 }

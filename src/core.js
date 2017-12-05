@@ -196,30 +196,24 @@ module.exports = {
   run: function(appPath, args, options){
     if(DEBUG) console.log("[UPDATER] Run:", appPath);
     function run(path, args, options){
-      var opts = {
-        detached: true
-      };
-      for(var key in options){
-        opts[key] = options[key];
-      }
-      var sp = spawn(path, args, opts);
-      sp.unref();
-      return sp;
+      var opts = { detached: true };
+      for(var key in options){ opts[key] = options[key]; }
+      return spawn(path, args, opts).unref();
     }
-
 
     if(platform == "mac"){
       if(args && args.length) args = [appPath].concat('--args', args);
       else args = [appPath];
       return run('open', args, options);
+
     } else if(platform == "win"){
       return run(appPath, args, options);
+
     } else if(platform == "linux32" || platform == "linux64"){
-      var appExec = path.join(appPath, path.basename(module.exports.getAppExec()));
-      fs.chmodSync(appExec, 0755);
+      fs.chmodSync(appPath, 0755);
       if(!options) options = {};
       options.cwd = appPath;
-      return run(appExec, args, options);
+      return run(appPath, args, options);
     }
   },
 
