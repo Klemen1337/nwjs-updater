@@ -10,7 +10,7 @@ var tempFolder = os.tmpdir();
 let DEBUG = true;
 
 var platform = process.platform;
-platform = /^win/.test(platform)? 'win' : /^darwin/.test(platform)? 'mac' : 'linux';
+platform = /^win/.test(platform)? 'win' : /^darwin/.test(platform)? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64');
 
 
 module.exports = {
@@ -45,6 +45,7 @@ module.exports = {
           res.on('end', function() {
             let manifest = JSON.parse(data);
             if(DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
+            
             resolve(manifest);
           });
         }
@@ -141,7 +142,7 @@ module.exports = {
         var command = "";
         if(platform == "win"){
           command = '"' + path.resolve(__dirname, 'tools/unzip.exe') + '" -u -o "' + fileToUnpack + '" -d "' + destinationDirectory + '" > NUL';
-        } else if(platform == "linux") {
+        } else if(platform == "linux32" || platform == "linux64") {
           command = 'unzip "' + fileToUnpack + '" -d "' + module.exports.getExecPathRelativeToPackage(manifest) + '" > /dev/null';
         } else if(platform == "mac"){
           command = 'unzip "' + fileToUnpack + '" -d "' + destinationDirectory + '" > /tmp/unpacking.txt';
@@ -213,12 +214,12 @@ module.exports = {
       return run('open', args, options);
     } else if(platform == "win"){
       return run(appPath, args, options, cb);
-    } else if(platform == "win"){
+    } else if(platform == "linux32" || platform == "linux64"){
       var appExec = path.join(appPath, path.basename(module.exports.getAppExec()));
       fs.chmodSync(appExec, 0755);
       if(!options) options = {};
       options.cwd = appPath;
-      return run(appPath + "/" + path.basename(module.exports.getAppExec()), args, options, cb);
+      return run(appExec, args, options, cb);
     }
   },
 
