@@ -213,13 +213,13 @@ module.exports = {
       else args = [appPath];
       return run('open', args, options);
     } else if(platform == "win"){
-      return run(appPath, args, options, cb);
+      return run(appPath, args, options);
     } else if(platform == "linux32" || platform == "linux64"){
       var appExec = path.join(appPath, path.basename(module.exports.getAppExec()));
       fs.chmodSync(appExec, 0755);
       if(!options) options = {};
       options.cwd = appPath;
-      return run(appExec, args, options, cb);
+      return run(appExec, args, options);
     }
   },
 

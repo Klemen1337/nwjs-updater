@@ -1,12 +1,8 @@
 var updater = require('../nwjs-updater');
 let package = require('../package.json');
 
-var url = "https://pos.dev.olaii.com/api/v1/registers/misc/package.json";
-var headers = {
-  "Authorization": 'Bearer BhU5fgWJJo1yUjGlmkIPMKDlEtaiIg',
-  "X-PosId": "krneki",
-  "Content-Type": "application/json"
-};
+var url = "";
+var headers = {};
 
 // ------------------ 1 ------------------
 updater.checkVersion(url, headers).then(function(newManifest){
@@ -46,13 +42,10 @@ function runInInstaller(){
     execPath = gui.App.argv[1];
 
     // Replace old app, Run updated app from original location and close temp instance
-    updater.install(copyPath, function(err) {
-        if(!err) {
-
-            // ------------- 7 -------------
-            updater.run(execPath, null);
-            gui.App.quit();
-        }
+    updater.install(copyPath).then(function() {
+      // ------------- 7 -------------
+      updater.run(execPath, null);
+      gui.App.quit();
     });
   }
 }
