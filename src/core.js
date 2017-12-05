@@ -171,16 +171,12 @@ module.exports = {
   install: function(installDirectory){
     return new Promise(function(resolve, reject){
       if(DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
-      deleteDirectory(installDirectory + "/node_modules/", function (err) {
-        if(err){
-          reject(err);
-        } else {
-          fs.copy(module.exports.getAppPath(), installDirectory, function(err){
-            if(err) reject(err);
-            else resolve(installDirectory);
-          });
-        }
-      });
+      deleteDirectory(installDirectory + "/node_modules/").then(function() {
+        fs.copy(module.exports.getAppPath(), installDirectory, function(err){
+          if(err) reject(err);
+          else resolve(installDirectory);
+        });
+      } reject);
     });
   },
 
@@ -315,31 +311,37 @@ function deleteFile(dir, file) {
 
 function deleteDirectory(dir, cb) {
   return new Promise(function (resolve, reject) {
-    fs.lstat(dir, function (err, stats) {
-      if (err) return reject(err);
-
-      if (stats.isDirectory()) {
-        fs.access(dir, function (err) {
+    fs.exists(dir, function(exists){
+      if(exists){
+        fs.lstat(dir, function (err, stats) {
           if (err) return reject(err);
-          fs.readdir(dir, function (err, files) {
-            if (err) return reject(err);
-            console.log(files);
-            Promise.all(files.map(function (file) {
-              if(cb) cb(file);
-              return deleteFile(dir, file);
-            })).then(function () {
-              fs.rmdir(dir, function (err) {
+    
+          if (stats.isDirectory()) {
+            fs.access(dir, function (err) {
+              if (err) return reject(err);
+              fs.readdir(dir, function (err, files) {
                 if (err) return reject(err);
-                resolve();
+                console.log(files);
+                Promise.all(files.map(function (file) {
+                  if(cb) cb(file);
+                  return deleteFile(dir, file);
+                })).then(function () {
+                  fs.rmdir(dir, function (err) {
+                    if (err) return reject(err);
+                    resolve();
+                  });
+                }).catch(reject);
               });
-            }).catch(reject);
-          });
+            });
+          } else {
+            fs.unlink(dir, function (err) {
+              if (err) return reject(err);
+              resolve();
+            });
+          }
         });
       } else {
-        fs.unlink(dir, function (err) {
-          if (err) return reject(err);
-          resolve();
-        });
+        resolve();
       }
     });
   });
