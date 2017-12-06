@@ -176,7 +176,7 @@ module.exports = {
           if(err) reject(err);
           else resolve(installDirectory);
         });
-      } reject);
+      }, reject);
     });
   },
 
@@ -297,7 +297,7 @@ function deleteFile(dir, file) {
     fs.lstat(filePath, function (err, stats) {
       if (err) return reject(err);
       if (stats.isDirectory()) {
-        resolve(deleteDirectory(filePath));
+        deleteDirectory(filePath).then(resolve, reject);
       } else {
         fs.unlink(filePath, function (err) {
           if (err) return reject(err);
