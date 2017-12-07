@@ -2,7 +2,7 @@ var path = require('path');
 var http = require('http');
 var URL = require('url');
 var os = require('os');
-var fs = require('fs');
+var fs = require('fs-extra');
 var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
 var timeout = 10000;
@@ -75,7 +75,7 @@ module.exports = {
           // Trow error if response is not 200 OK
           if(DEBUG) console.error("[UPDATER] Download error:", response);
           reject(new Error(response));
-          deleteDirectory(destinationPath);
+          fs.remove(destinationPath);
 
         } else {
           // Get total size
@@ -114,7 +114,7 @@ module.exports = {
             clearTimeout(timeoutId);
 
             // Clean and return error
-            deleteDirectory(destinationPath);
+            fs.remove(destinationPath);
             reject(err);
             if(DEBUG) console.error("[UPDATER] Download error:", err);
           });
@@ -122,7 +122,7 @@ module.exports = {
           // Generate download timeout handler
           var fn = function() {
             downloadRequest.abort();
-            deleteDirectory(destinationPath);
+            fs.remove(destinationPath);
             reject(new Error("File transfer timeout!"));
           };
           var timeoutId = setTimeout(fn, timeout);
@@ -158,7 +158,7 @@ module.exports = {
       // Check if directory exists
       fs.exists(destinationDirectory, function(exists){
         if(exists) {
-          deleteDirectory(destinationDirectory).then(unzip, reject);
+          fs.remove(destinationDirectory).then(unzip, reject);
         } else {
           unzip();
         }
@@ -171,11 +171,12 @@ module.exports = {
   install: function(installDirectory){
     return new Promise(function(resolve, reject){
       if(DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
-      deleteDirectory(installDirectory + "/node_modules/").then(function() {
-        fs.copy(module.exports.getAppPath(), installDirectory, function(err){
-          if(err) reject(err);
-          else resolve(installDirectory);
-        });
+      if(DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
+      fs.remove(installDirectory + "/node_modules/").then(function() {
+        if(DEBUG) console.log("[UPDATER] Copy '" + module.exports.getAppPath() + "' to '" + installDirectory + "'");
+        fs.copy(module.exports.getAppPath(), installDirectory).then(function(){
+          resolve(installDirectory);
+        }, reject);
       }, reject);
     });
   },
@@ -287,62 +288,3 @@ module.exports = {
     return eval('0' + "<" + cmp);
   },
 }
-
-
-
-
-function deleteFile(dir, file) {
-  return new Promise(function (resolve, reject) {
-    var filePath = path.join(dir, file);
-    fs.lstat(filePath, function (err, stats) {
-      if (err) return reject(err);
-      if (stats.isDirectory()) {
-        deleteDirectory(filePath).then(resolve, reject);
-      } else {
-        fs.unlink(filePath, function (err) {
-          if (err) return reject(err);
-          resolve();
-        });
-      }
-    });
-  });
-};
-
-
-function deleteDirectory(dir, cb) {
-  return new Promise(function (resolve, reject) {
-    fs.exists(dir, function(exists){
-      if(exists){
-        fs.lstat(dir, function (err, stats) {
-          if (err) return reject(err);
-    
-          if (stats.isDirectory()) {
-            fs.access(dir, function (err) {
-              if (err) return reject(err);
-              fs.readdir(dir, function (err, files) {
-                if (err) return reject(err);
-                console.log(files);
-                Promise.all(files.map(function (file) {
-                  if(cb) cb(file);
-                  return deleteFile(dir, file);
-                })).then(function () {
-                  fs.rmdir(dir, function (err) {
-                    if (err) return reject(err);
-                    resolve();
-                  });
-                }).catch(reject);
-              });
-            });
-          } else {
-            fs.unlink(dir, function (err) {
-              if (err) return reject(err);
-              resolve();
-            });
-          }
-        });
-      } else {
-        resolve();
-      }
-    });
-  });
-};

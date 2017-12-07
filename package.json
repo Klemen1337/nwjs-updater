@@ -7,7 +7,10 @@
     "nwjs",
     "nw"
   ],
-  "version": "0.0.7",
+  "version": "0.0.10",
   "author": "Klemen Kastelic <klemen@olaii.com>",
-  "main": "nwjs-updater.js"
+  "main": "nwjs-updater.js",
+  "dependencies": {
+    "fs-extra": "4.0.3"
+  }
 }
