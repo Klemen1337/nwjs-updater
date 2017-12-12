@@ -1,5 +1,5 @@
 var updater = require('../nwjs-updater');
-let package = require('../package.json');
+var package = require('../package.json');
 
 var url = "";
 var headers = {};
@@ -30,8 +30,8 @@ updater.checkVersion(url, headers).then(function(newManifest){
     console.error("No new update!");
   }
 }, function(error){
-  console.error(error);
-})
+  console.error("Cannot fetch new manifest:", error);
+});
 
 
 

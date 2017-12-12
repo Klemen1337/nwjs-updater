@@ -7,14 +7,13 @@ var exec = require('child_process').exec;
 var spawn = require('child_process').spawn;
 var timeout = 10000;
 var tempFolder = os.tmpdir();
-let DEBUG = true;
-
 var platform = process.platform;
 platform = /^win/.test(platform)? 'win' : /^darwin/.test(platform)? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64');
 
 
 module.exports = {
   manifest: null,
+  DEBUG: true,
 
   // ----------------------------- Check online -----------------------------
   checkVersion: function(url, headers){   
@@ -23,8 +22,8 @@ module.exports = {
       else http = require('http');
 
       url = URL.parse(url);
-      if(DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
-      http.get(
+      if(module.exports.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
+      var req = http.get(
         {
           hostname: url.hostname,
           path: url.path,
@@ -36,20 +35,32 @@ module.exports = {
             reject(new Error("Error parsing new manifest :("));
           }
 
-          let data = "";
+          var data = "";
           res.setEncoding('utf8');
           res.on('data', function(chunk) {
             data += chunk;
           });
-          
+
           res.on('end', function() {
-            let manifest = JSON.parse(data);
-            if(DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
-            
+            var manifest = JSON.parse(data);
+            module.exports.manifest = manifest;
+            if(module.exports.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
             resolve(manifest);
           });
         }
       );
+
+      req.on('error', function (e) {
+        reject(e);
+      });
+
+      req.on('timeout', function () {
+        reject(new Error("Timeout"));
+        req.abort();
+      });
+
+      req.setTimeout(2000);
+      req.end();
     });
   },
 
@@ -69,11 +80,11 @@ module.exports = {
       }
     
       // Start downloading
-      if(DEBUG)  console.log("[UPDATER] Started downloading:", url, " - to:", destinationPath);
+      if(module.exports.DEBUG)  console.log("[UPDATER] Started downloading:", url, " - to:", destinationPath);
       var downloadRequest = http.get(url).on('response', function(response) {
         if(response.statusCode != 200){
           // Trow error if response is not 200 OK
-          if(DEBUG) console.error("[UPDATER] Download error:", response);
+          if(module.exports.DEBUG) console.error("[UPDATER] Download error:", response);
           reject(new Error(response));
           fs.remove(destinationPath);
 
@@ -93,7 +104,7 @@ module.exports = {
               progress: (100.0 * downloaded / size).toFixed(2),
               bytes: downloaded
             };
-            if(DEBUG) console.log("[UPDATER] Download status:", status);
+            if(module.exports.DEBUG) console.log("[UPDATER] Download status:", status);
             statusCallback(status);          
 
             // Reset timeout
@@ -107,7 +118,7 @@ module.exports = {
             // Return filename
             file.end();
             resolve(destinationPath);
-            if(DEBUG) console.log("[UPDATER] Download success:", destinationPath);
+            if(module.exports.DEBUG) console.log("[UPDATER] Download success:", destinationPath);
     
           }).on('error', function (err) {
             // Clear timeout
@@ -116,7 +127,7 @@ module.exports = {
             // Clean and return error
             fs.remove(destinationPath);
             reject(err);
-            if(DEBUG) console.error("[UPDATER] Download error:", err);
+            if(module.exports.DEBUG) console.error("[UPDATER] Download error:", err);
           });
     
           // Generate download timeout handler
@@ -136,7 +147,7 @@ module.exports = {
   unpack: function(fileToUnpack, manifest){
     return new Promise(function(resolve, reject){
       var destinationDirectory = module.exports.getZipDestinationDirectory(manifest.name);
-      if(DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack , "->", destinationDirectory);
+      if(module.exports.DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack , "->", destinationDirectory);
 
       var unzip = function(){
         var command = "";
@@ -148,7 +159,7 @@ module.exports = {
           command = 'unzip "' + fileToUnpack + '" -d "' + destinationDirectory + '" > /tmp/unpacking.txt';
         }
 
-        if(DEBUG) console.log("[UPDATER] Unpacking command:", command);
+        if(module.exports.DEBUG) console.log("[UPDATER] Unpacking command:", command);
         exec(command, {cwd: tempFolder}, function(err){
           if(err) reject(err);
           else resolve(destinationDirectory);
@@ -170,10 +181,10 @@ module.exports = {
   // -------------------------------------- Install --------------------------------------
   install: function(installDirectory){
     return new Promise(function(resolve, reject){
-      if(DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
-      if(DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
+      if(module.exports.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
+      if(module.exports.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
       fs.remove(installDirectory + "/node_modules/").then(function() {
-        if(DEBUG) console.log("[UPDATER] Copy '" + module.exports.getAppPath() + "' to '" + installDirectory + "'");
+        if(module.exports.DEBUG) console.log("[UPDATER] Copy '" + module.exports.getAppPath() + "' to '" + installDirectory + "'");
         fs.copy(module.exports.getAppPath(), installDirectory).then(function(){
           resolve(installDirectory);
         }, reject);
@@ -191,7 +202,7 @@ module.exports = {
 
   // -------------------------------------- Run --------------------------------------
   run: function(appPath, args, options){
-    if(DEBUG) console.log("[UPDATER] Run:", appPath);
+    if(module.exports.DEBUG) console.log("[UPDATER] Run:", appPath);
     function run(path, args, options){
       var opts = { detached: true };
       for(var key in options){ opts[key] = options[key]; }
@@ -280,11 +291,11 @@ module.exports = {
         cmp = -1;
     }
 
-    if(DEBUG) {
+    if(module.exports.DEBUG) {
       if(eval('0' + "<" + cmp)) console.log("[UPDATER] New version avaliable!:", v1, "<", v2);
       else console.log("[UPDATER] No new version:", v1, ">", v2);
     }
      
     return eval('0' + "<" + cmp);
-  },
-}
+  }
+};
