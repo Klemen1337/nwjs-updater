@@ -42,10 +42,14 @@ module.exports = {
           });
 
           res.on('end', function() {
-            var manifest = JSON.parse(data);
-            module.exports.manifest = manifest;
-            if(module.exports.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
-            resolve(manifest);
+            try {
+              var manifest = JSON.parse(data);
+              module.exports.manifest = manifest;
+              if(module.exports.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
+              resolve(manifest);
+            } catch (e) {
+              reject(e);
+            }
           });
         }
       );
