@@ -1,15 +1,15 @@
-var path = require('path');
-var http = require('http');
-var URL = require('url');
-var os = require('os');
-var fs = require('fs-extra');
-var exec = require('child_process').exec;
-var spawn = require('child_process').spawn;
+const path = require('path');
+let http = require('http');
+const URL = require('url');
+const os = require('os');
+const fs = require('fs-extra');
+const exec = require('child_process').exec;
+const spawn = require('child_process').spawn;
 
-var downloadTimeout = 10000;
-var checkTimeout = 1000;
-var tempFolder = os.tmpdir();
-var platform = process.platform;
+const downloadTimeout = 10000;
+const checkTimeout = 1000;
+const tempFolder = os.tmpdir();
+let platform = process.platform;
 platform = /^win/.test(platform) ? 'win' : /^darwin/.test(platform) ? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64');
 
 
@@ -25,7 +25,8 @@ module.exports = {
 
       url = URL.parse(url);
       if (module.exports.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
-      var req = http.get({
+      const req = http.get(
+        {
           hostname: url.hostname,
           path: url.path,
           method: 'GET',
@@ -141,12 +142,12 @@ module.exports = {
           });
 
           // Generate download timeout handler
-          var fn = function () {
+          const fn = function () {
             downloadRequest.abort();
             fs.remove(destinationPath);
             reject(new Error("File transfer timeout!"));
           };
-          var timeoutId = setTimeout(fn, downloadTimeout);
+          let timeoutId = setTimeout(fn, downloadTimeout);
         }
       });
     });
@@ -154,27 +155,71 @@ module.exports = {
 
 
   // ----------------------------- Unpack -----------------------------
-  unpack: function (fileToUnpack, manifest) {
+  unpack: function (fileToUnpack, manifest, statusCallback) {
     return new Promise(function (resolve, reject) {
-      var destinationDirectory = module.exports.getZipDestinationDirectory(manifest.name);
+      const destinationDirectory = module.exports.getZipDestinationDirectory(manifest.name);
       if (module.exports.DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack, "->", destinationDirectory);
 
-      var unzip = function () {
-        var command = "";
-        if (platform == "win") {
-          command = '"' + path.resolve(__dirname, 'tools/unzip.exe') + '" -u -o "' + fileToUnpack + '" -d "' + destinationDirectory + '" > NUL';
-        } else if (platform == "linux32" || platform == "linux64") {
-          command = 'unzip "' + fileToUnpack + '" -d "' + module.exports.getExecPathRelativeToPackage(manifest) + '" > /dev/null';
-        } else if (platform == "mac") {
-          command = 'unzip "' + fileToUnpack + '" -d "' + destinationDirectory + '" > /tmp/unpacking.txt';
-        }
+      const unzipBin = platform == "win" ? path.resolve(__dirname, 'tools/unzip.exe') : 'unzip';
 
-        if (module.exports.DEBUG) console.log("[UPDATER] Unpacking command:", command);
-        exec(command, {
-          cwd: tempFolder
-        }, function (err) {
-          if (err) reject(err);
-          else resolve(destinationDirectory);
+      // Count entries in the archive so progress can be reported as extractedFiles/totalFiles
+      const getTotalFiles = function (callback) {
+        exec('"' + unzipBin + '" -l "' + fileToUnpack + '"', function (err, stdout) {
+          if (err) return callback(0);
+          let total = 0;
+          (stdout || "").split(/\r?\n/).forEach(function (line) {
+            if (/^\s*\d+\s+[\d\-.]+\s+[\d:]+\s+\S/.test(line)) total++;
+          });
+          callback(total);
+        });
+      };
+
+      const unzip = function () {
+        getTotalFiles(function (totalFiles) {
+          // Always extract into destinationDirectory - runInstaller() locates the
+          // executable inside it via getExecPathRelativeToPackage() on every platform.
+          const args = platform == "win"
+            ? ['-u', '-o', fileToUnpack, '-d', destinationDirectory]
+            : [fileToUnpack, '-d', destinationDirectory];
+
+          if (module.exports.DEBUG) console.log("[UPDATER] Unpacking command:", unzipBin, args.join(' '));
+
+          const child = spawn(unzipBin, args, {
+            cwd: tempFolder
+          });
+
+          let extractedFiles = 0;
+          let buffer = "";
+          let stderr = "";
+
+          child.stdout.on('data', function (chunk) {
+            buffer += chunk.toString();
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop();
+            lines.forEach(function (line) {
+              if (/(inflating|extracting|creating):/.test(line)) {
+                extractedFiles++;
+                const status = {
+                  totalFiles: totalFiles,
+                  extractedFiles: extractedFiles,
+                  progress: totalFiles ? (100.0 * extractedFiles / totalFiles).toFixed(2) : 0,
+                  file: line.split(':').slice(1).join(':').trim()
+                };
+                if (module.exports.DEBUG) console.log("[UPDATER] Unpack status:", status);
+                if (statusCallback) statusCallback(status);
+              }
+            });
+          });
+
+          child.stderr.on('data', function (chunk) {
+            stderr += chunk;
+          });
+
+          child.on('error', reject);
+          child.on('close', function (code) {
+            if (code) reject(new Error(stderr || ('unzip exited with code ' + code)));
+            else resolve(destinationDirectory);
+          });
         });
       };
 
@@ -207,7 +252,7 @@ module.exports = {
 
   // -------------------------------------- Run installer --------------------------------------
   runInstaller: function (manifest) {
-    var appPath = path.join(module.exports.getZipDestinationDirectory(manifest.name), module.exports.getExecPathRelativeToPackage(manifest));
+    const appPath = path.join(module.exports.getZipDestinationDirectory(manifest.name), module.exports.getExecPathRelativeToPackage(manifest));
     module.exports.run(appPath, [module.exports.getAppPath(), module.exports.getAppExec()], {});
   },
 
@@ -217,10 +262,10 @@ module.exports = {
     if (module.exports.DEBUG) console.log("[UPDATER] Run:", appPath);
 
     function run(path, args, options) {
-      var opts = {
+      const opts = {
         detached: true
       };
-      for (var key in options) {
+      for (const key in options) {
         opts[key] = options[key];
       }
       return spawn(path, args, opts).unref();
@@ -235,7 +280,7 @@ module.exports = {
       return run(appPath, args, options);
 
     } else if (platform == "linux32" || platform == "linux64") {
-      fs.chmodSync(appPath, 0755);
+      fs.chmodSync(appPath, "0755");
       if (!options) options = {};
       options.cwd = appPath;
       return run(appPath, args, options);
@@ -245,7 +290,7 @@ module.exports = {
 
   // -------------------------------------- App path --------------------------------------
   getAppPath: function () {
-    var appPath = {
+    const appPath = {
       mac: path.join(process.cwd(), '../../..'),
       win: path.dirname(process.execPath)
     };
@@ -257,8 +302,8 @@ module.exports = {
 
   // -------------------------------------- App exec --------------------------------------
   getAppExec: function () {
-    var execFolder = module.exports.getAppPath();
-    var exec = {
+    const execFolder = module.exports.getAppPath();
+    const exec = {
       mac: '',
       win: path.basename(process.execPath),
       linux32: path.basename(process.execPath),
@@ -276,11 +321,11 @@ module.exports = {
 
   // -------------------------------------- Get exec path relative to package --------------------------------------
   getExecPathRelativeToPackage: function (manifest) {
-    var execPath = manifest.packages[platform] && manifest.packages[platform].execPath;
+    const execPath = manifest.packages[platform] && manifest.packages[platform].execPath;
     if (execPath) {
       return execPath;
     } else {
-      var suffix = {
+      const suffix = {
         win: '.exe',
         mac: '.app'
       };
@@ -293,13 +338,13 @@ module.exports = {
   isThereNewVersion: function (v1, v2) {
     if (v1[0] == "v") v1 = v1.substring(1);
     if (v2[0] == "v") v2 = v2.substring(1);
-    var v1parts = v1.split('.');
-    var v2parts = v2.split('.');
-    var maxLen = Math.max(v1parts.length, v2parts.length);
-    var part1, part2;
-    var cmp = 0;
+    const v1parts = v1.split('.');
+    const v2parts = v2.split('.');
+    const maxLen = Math.max(v1parts.length, v2parts.length);
+    let part1, part2;
+    let cmp = 0;
 
-    for (var i = 0; i < maxLen && !cmp; i++) {
+    for (let i = 0; i < maxLen && !cmp; i++) {
       part1 = parseInt(v1parts[i], 10) || 0;
       part2 = parseInt(v2parts[i], 10) || 0;
       if (part1 < part2)
@@ -309,7 +354,7 @@ module.exports = {
     }
 
     if (module.exports.DEBUG) {
-      if (eval('0' + "<" + cmp)) console.log("[UPDATER] New version avaliable!:", v1, "<", v2);
+      if (eval('0' + "<" + cmp)) console.log("[UPDATER] New version available!:", v1, "<", v2);
       else console.log("[UPDATER] No new version:", v1, ">", v2);
     }
 

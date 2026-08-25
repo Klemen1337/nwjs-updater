@@ -11,6 +11,6 @@
   "author": "Klemen Kastelic <klemen@olaii.com>",
   "main": "nwjs-updater.js",
   "dependencies": {
-    "fs-extra": "4.0.3"
+    "fs-extra": "11.4.0"
   }
 }
