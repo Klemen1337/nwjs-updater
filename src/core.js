@@ -3,7 +3,6 @@ let http = require('http');
 const URL = require('url');
 const os = require('os');
 const fs = require('fs-extra');
-const exec = require('child_process').exec;
 const spawn = require('child_process').spawn;
 
 const downloadTimeout = 10000;
@@ -18,6 +17,12 @@ module.exports = {
   DEBUG: true,
 
   // ----------------------------- Check online -----------------------------
+  /**
+   * Fetches the remote manifest and stores it on `module.exports.manifest`.
+   * @param {string} url - URL of the manifest JSON file.
+   * @param {Object} [headers] - Request headers to send with the GET request.
+   * @returns {Promise<Object>} Resolves with the parsed manifest object.
+   */
   checkVersion: function (url, headers) {
     return new Promise(function (resolve, reject) {
       if (url.split("://")[0] == "https") http = require('https');
@@ -77,6 +82,12 @@ module.exports = {
 
 
   // ----------------------------- Download -----------------------------
+  /**
+   * Downloads the platform-specific package referenced by the manifest into the OS temp folder.
+   * @param {Object} [newManifest] - Manifest to download from; defaults to `this.manifest`.
+   * @param {function(Object): void} statusCallback - Called with `{size, progress, bytes}` on each chunk received.
+   * @returns {Promise<string>} Resolves with the path of the downloaded file.
+   */
   download: function (newManifest, statusCallback) {
     return new Promise(function (resolve, reject) {
       var manifest = newManifest || this.manifest;
@@ -155,6 +166,13 @@ module.exports = {
 
 
   // ----------------------------- Unpack -----------------------------
+  /**
+   * Extracts a downloaded zip package into the destination directory for the given manifest.
+   * @param {string} fileToUnpack - Path to the downloaded zip file.
+   * @param {Object} manifest - Manifest describing the package (used to derive the destination directory).
+   * @param {function(Object): void} [statusCallback] - Called with `{totalFiles, extractedFiles, progress, file}` as entries are extracted.
+   * @returns {Promise<string>} Resolves with the destination directory path.
+   */
   unpack: function (fileToUnpack, manifest, statusCallback) {
     return new Promise(function (resolve, reject) {
       const destinationDirectory = module.exports.getZipDestinationDirectory(manifest.name);
@@ -162,15 +180,35 @@ module.exports = {
 
       const unzipBin = platform == "win" ? path.resolve(__dirname, 'tools/unzip.exe') : 'unzip';
 
-      // Count entries in the archive so progress can be reported as extractedFiles/totalFiles
+      // Count entries in the archive so progress can be reported as extractedFiles/totalFiles.
+      // Read the count straight out of the ZIP's End Of Central Directory record instead of
+      // parsing `unzip -l` text output, whose column widths/date format vary between unzip
+      // builds (this is what made Windows always report 0 total files, hence 0% progress).
       const getTotalFiles = function (callback) {
-        exec('"' + unzipBin + '" -l "' + fileToUnpack + '"', function (err, stdout) {
+        const eocdSize = 22;
+        const maxCommentSize = 65535;
+
+        fs.stat(fileToUnpack, function (err, stats) {
           if (err) return callback(0);
-          let total = 0;
-          (stdout || "").split(/\r?\n/).forEach(function (line) {
-            if (/^\s*\d+\s+[\d\-.]+\s+[\d:]+\s+\S/.test(line)) total++;
+
+          const readSize = Math.min(stats.size, eocdSize + maxCommentSize);
+          const buffer = Buffer.alloc(readSize);
+
+          fs.open(fileToUnpack, 'r', function (err, fd) {
+            if (err) return callback(0);
+            fs.read(fd, buffer, 0, readSize, stats.size - readSize, function (err) {
+              fs.close(fd, function () { });
+              if (err) return callback(0);
+
+              // Scan backwards for the EOCD signature (0x06054b50, little-endian)
+              for (let i = readSize - eocdSize; i >= 0; i--) {
+                if (buffer.readUInt32LE(i) === 0x06054b50) {
+                  return callback(buffer.readUInt16LE(i + 10));
+                }
+              }
+              callback(0);
+            });
           });
-          callback(total);
         });
       };
 
@@ -236,6 +274,11 @@ module.exports = {
 
 
   // -------------------------------------- Install --------------------------------------
+  /**
+   * Replaces the app's `node_modules` at `installDirectory` with a copy of the currently running app.
+   * @param {string} installDirectory - Directory of the original app installation to update.
+   * @returns {Promise<string>} Resolves with `installDirectory` once the copy completes.
+   */
   install: function (installDirectory) {
     return new Promise(function (resolve, reject) {
       if (module.exports.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
@@ -251,6 +294,12 @@ module.exports = {
 
 
   // -------------------------------------- Run installer --------------------------------------
+  /**
+   * Launches the unpacked update package's executable, passing along the current app's
+   * path and executable so it can install itself over the running app.
+   * @param {Object} manifest - Manifest describing the unpacked package.
+   * @returns {void}
+   */
   runInstaller: function (manifest) {
     const appPath = path.join(module.exports.getZipDestinationDirectory(manifest.name), module.exports.getExecPathRelativeToPackage(manifest));
     module.exports.run(appPath, [module.exports.getAppPath(), module.exports.getAppExec()], {});
@@ -258,6 +307,14 @@ module.exports = {
 
 
   // -------------------------------------- Run --------------------------------------
+  /**
+   * Spawns a detached process for `appPath`, using the platform-appropriate launch strategy
+   * (macOS uses `open`, Windows/Linux spawn the executable directly).
+   * @param {string} appPath - Path of the executable/app to launch.
+   * @param {string[]} [args] - Arguments to pass to the executable.
+   * @param {Object} [options] - Extra options merged into the `child_process.spawn` options.
+   * @returns {ChildProcess} The unref'd spawned child process.
+   */
   run: function (appPath, args, options) {
     if (module.exports.DEBUG) console.log("[UPDATER] Run:", appPath);
 
@@ -289,6 +346,11 @@ module.exports = {
 
 
   // -------------------------------------- App path --------------------------------------
+  /**
+   * Returns the directory of the currently running app (three levels up from cwd on macOS,
+   * the executable's directory on Windows/Linux).
+   * @returns {string} Path to the running app's directory.
+   */
   getAppPath: function () {
     const appPath = {
       mac: path.join(process.cwd(), '../../..'),
@@ -301,6 +363,10 @@ module.exports = {
 
 
   // -------------------------------------- App exec --------------------------------------
+  /**
+   * Returns the full path to the currently running app's executable.
+   * @returns {string} Path to the app executable (empty basename on macOS, since it's a bundle).
+   */
   getAppExec: function () {
     const execFolder = module.exports.getAppPath();
     const exec = {
@@ -314,12 +380,24 @@ module.exports = {
 
 
   // -------------------------------------- Get zip destination --------------------------------------
+  /**
+   * Builds the extraction destination directory for a package, inside the OS temp folder.
+   * @param {string} name - Package name (typically `manifest.name`).
+   * @returns {string} Destination directory path.
+   */
   getZipDestinationDirectory: function (name) {
     return path.join(tempFolder, path.basename(name));
   },
 
 
   // -------------------------------------- Get exec path relative to package --------------------------------------
+  /**
+   * Resolves the executable path within an unpacked package, relative to its package folder.
+   * Uses `manifest.packages[platform].execPath` when set, otherwise falls back to
+   * `manifest.name` plus the platform's default extension (`.exe` / `.app`).
+   * @param {Object} manifest - Manifest describing the package.
+   * @returns {string} Executable path relative to the package's destination directory.
+   */
   getExecPathRelativeToPackage: function (manifest) {
     const execPath = manifest.packages[platform] && manifest.packages[platform].execPath;
     if (execPath) {
@@ -335,6 +413,12 @@ module.exports = {
 
 
   // -------------------------------------- Compare versions --------------------------------------
+  /**
+   * Compares two semver-like version strings (optionally prefixed with "v").
+   * @param {string} v1 - Current version.
+   * @param {string} v2 - Candidate version to compare against.
+   * @returns {boolean} `true` if `v2` is newer than `v1`.
+   */
   isThereNewVersion: function (v1, v2) {
     if (v1[0] == "v") v1 = v1.substring(1);
     if (v2[0] == "v") v2 = v2.substring(1);
