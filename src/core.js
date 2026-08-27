@@ -301,7 +301,7 @@ module.exports = {
    */
   runInstaller: function (manifest) {
     const appPath = path.join(module.exports.getZipDestinationDirectory(manifest.name), module.exports.getExecPathRelativeToPackage(manifest));
-    module.exports.run(appPath, [module.exports.getAppPath(), module.exports.getAppExec()], {});
+    return module.exports.run(appPath, [module.exports.getAppPath(), module.exports.getAppExec()], {});
   },
 
 
@@ -324,7 +324,9 @@ module.exports = {
       for (const key in options) {
         opts[key] = options[key];
       }
-      return spawn(path, args, opts).unref();
+      const child = spawn(path, args, opts);
+      child.unref();
+      return child;
     }
 
     if (platform == "mac") {
@@ -338,7 +340,7 @@ module.exports = {
     } else if (platform == "linux32" || platform == "linux64") {
       fs.chmodSync(appPath, "0755");
       if (!options) options = {};
-      options.cwd = appPath;
+      options.cwd = path.dirname(appPath);
       return run(appPath, args, options);
     }
   },
