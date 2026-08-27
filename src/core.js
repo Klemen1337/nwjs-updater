@@ -1,6 +1,5 @@
 const path = require('path');
 let http = require('http');
-const URL = require('url');
 const os = require('os');
 const fs = require('fs-extra');
 const spawn = require('child_process').spawn;
@@ -28,12 +27,12 @@ module.exports = {
       if (url.split("://")[0] == "https") http = require('https');
       else http = require('http');
 
-      url = URL.parse(url);
+      url = new URL(url);
       if (module.exports.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
       const req = http.get(
         {
           hostname: url.hostname,
-          path: url.path,
+          path: url.pathname,
           method: 'GET',
           headers: headers,
           timeout: checkTimeout
