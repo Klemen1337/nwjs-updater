@@ -11,13 +11,13 @@ let platform = process.platform;
 platform = /^win/.test(platform) ? 'win' : /^darwin/.test(platform) ? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64');
 
 
-module.exports = {
+const service = {
   manifest: null,
   DEBUG: true,
 
   // ----------------------------- Check online -----------------------------
   /**
-   * Fetches the remote manifest and stores it on `module.exports.manifest`.
+   * Fetches the remote manifest and stores it on `service.manifest`.
    * @param {string} url - URL of the manifest JSON file.
    * @param {Object} [headers] - Request headers to send with the GET request.
    * @returns {Promise<Object>} Resolves with the parsed manifest object.
@@ -28,7 +28,7 @@ module.exports = {
       else http = require('http');
 
       url = new URL(url);
-      if (module.exports.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
+      if (service.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
       const req = http.get(
         {
           hostname: url.hostname,
@@ -51,8 +51,8 @@ module.exports = {
           res.on('end', function () {
             try {
               var manifest = JSON.parse(data);
-              module.exports.manifest = manifest;
-              if (module.exports.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
+              service.manifest = manifest;
+              if (service.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
               resolve(manifest);
             } catch (e) {
               reject(e);
@@ -101,11 +101,11 @@ module.exports = {
       }
 
       // Start downloading
-      if (module.exports.DEBUG) console.log("[UPDATER] Started downloading:", url, " - to:", destinationPath);
+      if (service.DEBUG) console.log("[UPDATER] Started downloading:", url, " - to:", destinationPath);
       var downloadRequest = http.get(url).on('response', function (response) {
         if (response.statusCode != 200) {
           // Trow error if response is not 200 OK
-          if (module.exports.DEBUG) console.error("[UPDATER] Download error:", response);
+          if (service.DEBUG) console.error("[UPDATER] Download error:", response);
           reject(new Error(response));
           fs.remove(destinationPath);
 
@@ -125,7 +125,7 @@ module.exports = {
               progress: (100.0 * downloaded / size).toFixed(2),
               bytes: downloaded
             };
-            if (module.exports.DEBUG) console.log("[UPDATER] Download status:", status);
+            if (service.DEBUG) console.log("[UPDATER] Download status:", status);
             statusCallback(status);
 
             // Reset timeout
@@ -139,7 +139,7 @@ module.exports = {
             // Return filename
             file.end();
             resolve(destinationPath);
-            if (module.exports.DEBUG) console.log("[UPDATER] Download success:", destinationPath);
+            if (service.DEBUG) console.log("[UPDATER] Download success:", destinationPath);
 
           }).on('error', function (err) {
             // Clear timeout
@@ -148,7 +148,7 @@ module.exports = {
             // Clean and return error
             fs.remove(destinationPath);
             reject(err);
-            if (module.exports.DEBUG) console.error("[UPDATER] Download error:", err);
+            if (service.DEBUG) console.error("[UPDATER] Download error:", err);
           });
 
           // Generate download timeout handler
@@ -174,8 +174,8 @@ module.exports = {
    */
   unpack: function (fileToUnpack, manifest, statusCallback) {
     return new Promise(function (resolve, reject) {
-      const destinationDirectory = module.exports.getZipDestinationDirectory(manifest.name);
-      if (module.exports.DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack, "->", destinationDirectory);
+      const destinationDirectory = service.getZipDestinationDirectory(manifest.name);
+      if (service.DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack, "->", destinationDirectory);
 
       const unzipBin = platform == "win" ? path.resolve(__dirname, 'tools/unzip.exe') : 'unzip';
 
@@ -219,7 +219,7 @@ module.exports = {
             ? ['-u', '-o', fileToUnpack, '-d', destinationDirectory]
             : [fileToUnpack, '-d', destinationDirectory];
 
-          if (module.exports.DEBUG) console.log("[UPDATER] Unpacking command:", unzipBin, args.join(' '));
+          if (service.DEBUG) console.log("[UPDATER] Unpacking command:", unzipBin, args.join(' '));
 
           const child = spawn(unzipBin, args, {
             cwd: tempFolder
@@ -242,7 +242,7 @@ module.exports = {
                   progress: totalFiles ? (100.0 * extractedFiles / totalFiles).toFixed(2) : 0,
                   file: line.split(':').slice(1).join(':').trim()
                 };
-                if (module.exports.DEBUG) console.log("[UPDATER] Unpack status:", status);
+                if (service.DEBUG) console.log("[UPDATER] Unpack status:", status);
                 if (statusCallback) statusCallback(status);
               }
             });
@@ -280,11 +280,11 @@ module.exports = {
    */
   install: function (installDirectory) {
     return new Promise(function (resolve, reject) {
-      if (module.exports.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
-      if (module.exports.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
+      if (service.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
+      if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
       fs.remove(installDirectory + "/node_modules/").then(function () {
-        if (module.exports.DEBUG) console.log("[UPDATER] Copy '" + module.exports.getAppPath() + "' to '" + installDirectory + "'");
-        fs.copy(module.exports.getAppPath(), installDirectory).then(function () {
+        if (service.DEBUG) console.log("[UPDATER] Copy '" + service.getAppPath() + "' to '" + installDirectory + "'");
+        fs.copy(service.getAppPath(), installDirectory).then(function () {
           resolve(installDirectory);
         }, reject);
       }, reject);
@@ -300,8 +300,8 @@ module.exports = {
    * @returns {void}
    */
   runInstaller: function (manifest) {
-    const appPath = path.join(module.exports.getZipDestinationDirectory(manifest.name), module.exports.getExecPathRelativeToPackage(manifest));
-    return module.exports.run(appPath, [module.exports.getAppPath(), module.exports.getAppExec()], {});
+    const appPath = path.join(service.getZipDestinationDirectory(manifest.name), service.getExecPathRelativeToPackage(manifest));
+    return service.run(appPath, [service.getAppPath(), service.getAppExec()], {});
   },
 
 
@@ -315,7 +315,7 @@ module.exports = {
    * @returns {ChildProcess} The unref'd spawned child process.
    */
   run: function (appPath, args, options) {
-    if (module.exports.DEBUG) console.log("[UPDATER] Run:", appPath);
+    if (service.DEBUG) console.log("[UPDATER] Run:", appPath);
 
     function run(path, args, options) {
       const opts = {
@@ -369,7 +369,7 @@ module.exports = {
    * @returns {string} Path to the app executable (empty basename on macOS, since it's a bundle).
    */
   getAppExec: function () {
-    const execFolder = module.exports.getAppPath();
+    const execFolder = service.getAppPath();
     const exec = {
       mac: '',
       win: path.basename(process.execPath),
@@ -438,7 +438,7 @@ module.exports = {
         cmp = -1;
     }
 
-    if (module.exports.DEBUG) {
+    if (service.DEBUG) {
       if (eval('0' + "<" + cmp)) console.log("[UPDATER] New version available!:", v1, "<", v2);
       else console.log("[UPDATER] No new version:", v1, ">", v2);
     }
@@ -446,3 +446,5 @@ module.exports = {
     return eval('0' + "<" + cmp);
   }
 };
+
+module.exports = service;
