@@ -1,4 +1,4 @@
-# NWJS Updater v0.0.15
+# NWJS Updater v0.0.16
 
 Self-update helper for [NW.js](https://nwjs.io/) apps. It checks a remote manifest for a newer version, downloads the platform-specific package, unpacks it, and installs it over the running app.
 
