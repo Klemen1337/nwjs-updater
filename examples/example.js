@@ -41,7 +41,7 @@ updater.checkVersion(url, headers).then(function (newManifest) {
 
 
 function runInInstaller () {
-  if (gui.App.argv.length) {
+  if (gui.App.argv.length > 2) {
     // ------------- 6 -------------
     copyPath = gui.App.argv[0];
     execPath = gui.App.argv[1];
