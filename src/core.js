@@ -309,8 +309,10 @@ const service = {
    * @returns {void}
    */
   runInstaller: function (manifest) {
+    // Generate a unique data directory using the current timestamp
+    const uniqueDataDir = path.join(os.tmpdir(), `olaii_nwjs_updater_${Date.now()}`);
     const appPath = path.join(service.getZipDestinationDirectory(manifest.name), service.getExecPathRelativeToPackage(manifest));
-    return service.run(appPath, [service.getAppPath(), service.getAppExec()], {});
+    return service.run(appPath, ["INSTALL_UPDATE", service.getAppPath(), service.getAppExec(), `--user-data-dir=${uniqueDataDir}`], {});
   },
 
 
@@ -326,7 +328,8 @@ const service = {
   run: function (appPath, args, options) {
     function run(path, args, options) {
       const opts = {
-        detached: true
+        detached: true,
+        stdio: 'ignore'
       };
       for (const key in options) {
         opts[key] = options[key];
