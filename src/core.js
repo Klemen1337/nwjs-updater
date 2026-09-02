@@ -1,19 +1,18 @@
-const path = require('path');
 let http = require('http');
+const path = require('path');
 const os = require('os');
 const fs = require('fs-extra');
 const spawn = require('child_process').spawn;
-
-const downloadTimeout = 10000;
-const checkTimeout = 1000;
-const tempFolder = os.tmpdir();
-let platform = process.platform;
-platform = /^win/.test(platform) ? 'win' : /^darwin/.test(platform) ? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64');
 
 
 const service = {
   manifest: null,
   DEBUG: true,
+
+  downloadTimeout: 10000,
+  checkTimeout: 1000,
+  tempFolder: os.tmpdir(),
+  platform: /^win/.test(process.platform) ? 'win' : /^darwin/.test(process.platform) ? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64'),
 
   // ----------------------------- Check online -----------------------------
   /**
@@ -24,25 +23,25 @@ const service = {
    */
   checkVersion: function (url, headers) {
     return new Promise(function (resolve, reject) {
-      if (url.split("://")[0] == "https") http = require('https');
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol == "https:") http = require('https');
       else http = require('http');
 
-      url = new URL(url);
-      if (service.DEBUG) console.log("[UPDATER] Getting new manifest:", url.href);
+      if (service.DEBUG) console.log("[UPDATER] Getting new manifest:", parsedUrl.href);
       const req = http.get(
         {
-          hostname: url.hostname,
-          path: url.pathname,
+          hostname: parsedUrl.hostname,
+          path: parsedUrl.pathname,
           method: 'GET',
           headers: headers,
-          timeout: checkTimeout
+          timeout: service.checkTimeout
         },
         function (res) {
           if (res.statusCode != 200) {
             reject(new Error("Error parsing new manifest :("));
           }
 
-          var data = "";
+          let data = "";
           res.setEncoding('utf8');
           res.on('data', function (chunk) {
             data += chunk;
@@ -50,7 +49,7 @@ const service = {
 
           res.on('end', function () {
             try {
-              var manifest = JSON.parse(data);
+              const manifest = JSON.parse(data);
               service.manifest = manifest;
               if (service.DEBUG) console.log("[UPDATER] Got new manifest:", manifest);
               resolve(manifest);
@@ -67,12 +66,12 @@ const service = {
 
       req.on('timeout', function () {
         reject(new Error("Timeout"));
-        req.abort();
+        req.destroy();
       });
 
-      req.setTimeout(checkTimeout, function () {
+      req.setTimeout(service.checkTimeout, function () {
         reject(new Error("Timeout"));
-        req.abort();
+        req.destroy();
       });
 
       req.end();
@@ -89,11 +88,11 @@ const service = {
    */
   download: function (newManifest, statusCallback) {
     return new Promise(function (resolve, reject) {
-      var manifest = newManifest || this.manifest;
-      var url = manifest.packages[platform].url;
-      var filename = path.basename(url);
-      var destinationPath = path.join(tempFolder, filename);
-      var file = fs.createWriteStream(destinationPath);
+      const manifest = newManifest || this.manifest;
+      const url = manifest.packages[service.platform].url;
+      const filename = path.basename(url);
+      const destinationPath = path.join(service.tempFolder, filename);
+      const file = fs.createWriteStream(destinationPath);
 
       // If protocol is https
       if (url.split("://")[0] == "https") {
@@ -102,7 +101,7 @@ const service = {
 
       // Start downloading
       if (service.DEBUG) console.log("[UPDATER] Started downloading:", url, " - to:", destinationPath);
-      var downloadRequest = http.get(url).on('response', function (response) {
+      const downloadRequest = http.get(url).on('response', function (response) {
         if (response.statusCode != 200) {
           // Trow error if response is not 200 OK
           if (service.DEBUG) console.error("[UPDATER] Download error:", response);
@@ -111,8 +110,9 @@ const service = {
 
         } else {
           // Get total size
-          var size = parseInt(response.headers['content-length'], 10);
-          var downloaded = 0;
+          const size = parseInt(response.headers['content-length'], 10);
+          let downloaded = 0;
+          let oldProgress = 0;
 
           // Listen to request changes
           response.on('data', function (chunk) {
@@ -120,17 +120,22 @@ const service = {
 
             // Callback download status
             downloaded += chunk.length;
-            var status = {
+            const progress = parseInt((100.0 * downloaded / size).toFixed(0));
+            const status = {
               size: size,
-              progress: (100.0 * downloaded / size).toFixed(2),
+              progress: progress,
               bytes: downloaded
             };
-            if (service.DEBUG) console.log("[UPDATER] Download status:", status);
-            statusCallback(status);
+            
+            if (statusCallback && progress != oldProgress) {
+              if (service.DEBUG) console.log("[UPDATER] Download status:", status);
+              statusCallback(status);
+              oldProgress = parseInt(progress);
+            }
 
             // Reset timeout
             clearTimeout(timeoutId);
-            timeoutId = setTimeout(fn, downloadTimeout);
+            timeoutId = setTimeout(fn, service.downloadTimeout);
 
           }).on('end', function () {
             // Clear timeout
@@ -153,11 +158,11 @@ const service = {
 
           // Generate download timeout handler
           const fn = function () {
-            downloadRequest.abort();
+            downloadRequest.destroy();
             fs.remove(destinationPath);
             reject(new Error("File transfer timeout!"));
           };
-          let timeoutId = setTimeout(fn, downloadTimeout);
+          let timeoutId = setTimeout(fn, service.downloadTimeout);
         }
       });
     });
@@ -177,7 +182,7 @@ const service = {
       const destinationDirectory = service.getZipDestinationDirectory(manifest.name);
       if (service.DEBUG) console.log("[UPDATER] Unpacking:", fileToUnpack, "->", destinationDirectory);
 
-      const unzipBin = platform == "win" ? path.resolve(__dirname, 'tools/unzip.exe') : 'unzip';
+      const unzipBin = service.platform == "win" ? path.resolve(__dirname, 'tools/unzip.exe') : 'unzip';
 
       // Count entries in the archive so progress can be reported as extractedFiles/totalFiles.
       // Read the count straight out of the ZIP's End Of Central Directory record instead of
@@ -215,14 +220,14 @@ const service = {
         getTotalFiles(function (totalFiles) {
           // Always extract into destinationDirectory - runInstaller() locates the
           // executable inside it via getExecPathRelativeToPackage() on every platform.
-          const args = platform == "win"
+          const args = service.platform == "win"
             ? ['-u', '-o', fileToUnpack, '-d', destinationDirectory]
             : [fileToUnpack, '-d', destinationDirectory];
 
           if (service.DEBUG) console.log("[UPDATER] Unpacking command:", unzipBin, args.join(' '));
 
           const child = spawn(unzipBin, args, {
-            cwd: tempFolder
+            cwd: service.tempFolder
           });
 
           let extractedFiles = 0;
@@ -236,10 +241,11 @@ const service = {
             lines.forEach(function (line) {
               if (/(inflating|extracting|creating):/.test(line)) {
                 extractedFiles++;
+                const progress = totalFiles ? (100.0 * extractedFiles / totalFiles).toFixed(2) : 0;
                 const status = {
                   totalFiles: totalFiles,
                   extractedFiles: extractedFiles,
-                  progress: totalFiles ? (100.0 * extractedFiles / totalFiles).toFixed(2) : 0,
+                  progress: progress,
                   file: line.split(':').slice(1).join(':').trim()
                 };
                 if (service.DEBUG) console.log("[UPDATER] Unpack status:", status);
@@ -315,8 +321,6 @@ const service = {
    * @returns {ChildProcess} The unref'd spawned child process.
    */
   run: function (appPath, args, options) {
-    if (service.DEBUG) console.log("[UPDATER] Run:", appPath);
-
     function run(path, args, options) {
       const opts = {
         detached: true
@@ -324,20 +328,21 @@ const service = {
       for (const key in options) {
         opts[key] = options[key];
       }
+      if (service.DEBUG) console.log("[UPDATER] Run:", appPath, args, opts);
       const child = spawn(path, args, opts);
       child.unref();
       return child;
     }
 
-    if (platform == "mac") {
+    if (service.platform == "mac") {
       if (args && args.length) args = [appPath].concat('--args', args);
       else args = [appPath];
       return run('open', args, options);
 
-    } else if (platform == "win") {
+    } else if (service.platform == "win") {
       return run(appPath, args, options);
 
-    } else if (platform == "linux32" || platform == "linux64") {
+    } else if (service.platform == "linux32" || service.platform == "linux64") {
       fs.chmodSync(appPath, "0755");
       if (!options) options = {};
       options.cwd = path.dirname(appPath);
@@ -359,7 +364,7 @@ const service = {
     };
     appPath.linux32 = appPath.win;
     appPath.linux64 = appPath.win;
-    return appPath[platform];
+    return appPath[service.platform];
   },
 
 
@@ -376,7 +381,7 @@ const service = {
       linux32: path.basename(process.execPath),
       linux64: path.basename(process.execPath)
     };
-    return path.join(execFolder, exec[platform]);
+    return path.join(execFolder, exec[service.platform]);
   },
 
 
@@ -387,7 +392,7 @@ const service = {
    * @returns {string} Destination directory path.
    */
   getZipDestinationDirectory: function (name) {
-    return path.join(tempFolder, path.basename(name));
+    return path.join(service.tempFolder, path.basename(name));
   },
 
 
@@ -400,7 +405,7 @@ const service = {
    * @returns {string} Executable path relative to the package's destination directory.
    */
   getExecPathRelativeToPackage: function (manifest) {
-    const execPath = manifest.packages[platform] && manifest.packages[platform].execPath;
+    const execPath = manifest.packages[service.platform] && manifest.packages[service.platform].execPath;
     if (execPath) {
       return execPath;
     } else {
@@ -408,7 +413,7 @@ const service = {
         win: '.exe',
         mac: '.app'
       };
-      return manifest.name + (suffix[platform] || '');
+      return manifest.name + (suffix[service.platform] || '');
     }
   },
 
@@ -438,12 +443,14 @@ const service = {
         cmp = -1;
     }
 
+    const hasNewVersion = eval('0' + "<" + cmp);
+
     if (service.DEBUG) {
-      if (eval('0' + "<" + cmp)) console.log("[UPDATER] New version available!:", v1, "<", v2);
+      if (hasNewVersion) console.log("[UPDATER] New version available!:", v1, "<", v2);
       else console.log("[UPDATER] No new version:", v1, ">", v2);
     }
 
-    return eval('0' + "<" + cmp);
+    return hasNewVersion;
   }
 };
 
