@@ -288,10 +288,13 @@ const service = {
     return new Promise(function (resolve, reject) {
       if (service.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
       if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
+      if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/package.nw/node_modules/");
       fs.remove(installDirectory + "/node_modules/").then(function () {
-        if (service.DEBUG) console.log("[UPDATER] Copy '" + service.getAppPath() + "' to '" + installDirectory + "'");
-        fs.copy(service.getAppPath(), installDirectory).then(function () {
-          resolve(installDirectory);
+        fs.remove(installDirectory + "/package.nw/node_modules/").then(function () {
+          if (service.DEBUG) console.log("[UPDATER] Copy '" + service.getAppPath() + "' to '" + installDirectory + "'");
+          fs.copy(service.getAppPath(), installDirectory).then(function () {
+            resolve(installDirectory);
+          }, reject);
         }, reject);
       }, reject);
     });
