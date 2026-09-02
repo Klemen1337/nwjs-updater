@@ -1,56 +1,58 @@
 const updater = require('../nwjs-updater');
 const package = require('../package.json');
 
-var url = "";
-var headers = {};
+const url = "";
+const headers = {}
 
 // ------------------ 1 ------------------
-updater.checkVersion(url, headers).then(function(newManifest){
+updater.checkVersion(url, headers).then(function (newManifest) {
   // console.log(package);
 
   // ------------------ 2 ------------------
-  if(updater.isThereNewVersion(package.version, newManifest.version)){
+  if (updater.isThereNewVersion(package.version, newManifest)) {
 
     // ------------------ 3 ------------------
-    updater.download(newManifest, function(downloadStatus){
+    updater.download(newManifest, function (downloadStatus) {
       // Download status
-    }).then(function(downloadResponse){
+    }).then(function (downloadResponse) {
 
       // ------------------ 4 ------------------
-      updater.unpack(downloadResponse, newManifest, function(unpackStatus){
+      updater.unpack(downloadResponse, newManifest, function (unpackStatus) {
         // Unpack status
-      }).then(function(unpackResponse){
-    
+      }).then(function (unpackResponse) {
+
         // ------------------ 5 ------------------
         updater.runInstaller(newManifest);
-      }, function(error){
+      }, function (error) {
         console.error(error);
       });
 
-    }, function(error){
+    }, function (error) {
       console.error(error);
     });
 
   } else {
     console.error("No new update!");
   }
-}, function(error){
+}, function (error) {
   console.error("Cannot fetch new manifest:", error);
 });
 
 
 
-function runInInstaller(){
-  if(gui.App.argv.length) {
+function runInInstaller () {
+  if (gui.App.argv.length) {
     // ------------- 6 -------------
     copyPath = gui.App.argv[0];
     execPath = gui.App.argv[1];
 
     // Replace old app, Run updated app from original location and close temp instance
-    updater.install(copyPath).then(function() {
+    updater.install(copyPath).then(function () {
       // ------------- 7 -------------
-      updater.run(execPath, null);
-      gui.App.quit();
+      const client = updater.run(execPath, null);
+      client.on('spawn', function () {
+        gui.App.quit();
+      })
     });
   }
 }
