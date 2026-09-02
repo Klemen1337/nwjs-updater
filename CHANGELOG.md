@@ -1,5 +1,9 @@
 # Changelog
 
+## **v0.0.18** - 2.9.2026
+
+- reverted run installer
+
 ## **v0.0.17** - 2.9.2026
 
 - worked on update app directory to fix windows run installer
