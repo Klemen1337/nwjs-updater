@@ -482,7 +482,45 @@ const service = {
     }
 
     return hasNewVersion;
+  },
+
+
+  // -------------------------------------- Wait for PID --------------------------------------
+  /**
+   * Polls until the given process ID is no longer running or timeout is reached.
+   * @param {number|string} pid - Process ID to wait for.
+   * @param {number} [timeout=20000] - Max time to wait in milliseconds.
+   * @returns {Promise<void>}
+   */
+  waitForPid: function (pid, timeout = 20000) {
+    return new Promise(function (resolve) {
+      if (!pid) return resolve();
+      const targetPid = parseInt(pid, 10);
+      if (isNaN(targetPid)) return resolve();
+
+      const startTime = Date.now();
+      const check = function () {
+        let isRunning = false;
+        try {
+          isRunning = process.kill(targetPid, 0);
+        } catch (e) {
+          if (e.code === 'EPERM') {
+            isRunning = true;
+          } else {
+            isRunning = false;
+          }
+        }
+
+        if (!isRunning || (Date.now() - startTime > timeout)) {
+          resolve(); // Process has exited or timeout reached
+        } else {
+          setTimeout(check, 200); // Check every 200ms
+        }
+      };
+      check();
+    });
   }
+
 };
 
 module.exports = service;
