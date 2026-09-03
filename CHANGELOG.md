@@ -1,5 +1,13 @@
 # Changelog
 
+## **v0.0.19** - 3.9.2026
+
+- updated example,
+- changed to packArgs,
+- added getArgs and packArgs functions,
+- added waitForPid function,
+- added status callback to install function
+
 ## **v0.0.18** - 2.9.2026
 
 - reverted run installer
