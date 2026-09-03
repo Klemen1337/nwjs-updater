@@ -372,7 +372,14 @@ const service = {
     // Generate a unique data directory using the current timestamp
     const uniqueDataDir = path.join(os.tmpdir(), `olaii_nwjs_updater_${Date.now()}`);
     const appPath = path.join(service.getZipDestinationDirectory(manifest.name), service.getExecPathRelativeToPackage(manifest));
-    return service.run(appPath, [service.getAppPath(), service.getAppExec(), "INSTALL_UPDATE", `--user-data-dir=${uniqueDataDir}`], {});
+    const args = {
+      appPath: service.getAppPath(),
+      appExec: service.getAppExec(),
+      action: "INSTALL_UPDATE",
+      parentPid: process.pid,
+      userDataDir: uniqueDataDir
+    }
+    return service.run(appPath, service.packArgs(args), {});
   },
 
 
