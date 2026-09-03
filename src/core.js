@@ -14,6 +14,41 @@ const service = {
   tempFolder: os.tmpdir(),
   platform: /^win/.test(process.platform) ? 'win' : /^darwin/.test(process.platform) ? 'mac' : 'linux' + (process.arch == 'ia32' ? '32' : '64'),
 
+  argKeys: {
+    appPath: "--app-path=",
+    appExec: "--app-exec=",
+    action: "--action=",
+    parentPid: "--parent-pid=",
+    userDataDir: "--user-data-dir="
+  },
+
+  getArgs(rawArgs) {
+    const argv = rawArgs || process.argv;
+    console.log ("[UPDATER] argv:", argv);
+    const args = {};
+
+    for (const key in service.argKeys) {
+      const argKey = service.argKeys[key];
+      const argValue = argv.find(arg => arg.startsWith(argKey));
+      if (argValue) {
+        args[key] = argValue.replace(argKey, "");
+      }
+    }
+
+    console.log ("[UPDATER] parsed args:", args);
+    return args;
+  },
+
+  packArgs(args) {
+    const argsArray = [];
+    for (const key in service.argKeys) {
+      if (args[key]) {
+        argsArray.push(service.argKeys[key] + args[key]);
+      }
+    }
+    return argsArray;
+  },
+
   // ----------------------------- Check online -----------------------------
   /**
    * Fetches the remote manifest and stores it on `service.manifest`.
