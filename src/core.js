@@ -282,21 +282,46 @@ const service = {
   /**
    * Replaces the app's `node_modules` at `installDirectory` with a copy of the currently running app.
    * @param {string} installDirectory - Directory of the original app installation to update.
+   * @param {number} parentPid - Process ID of the parent process to wait for before installing.
+   * @param {function(Object): void} [statusCallback] - Called with `{message}` as the install progresses.
    * @returns {Promise<string>} Resolves with `installDirectory` once the copy completes.
    */
-  install: function (installDirectory) {
-    return new Promise(function (resolve, reject) {
+  install: function (installDirectory, parentPid, statusCallback) {
+    return new Promise(async function (resolve, reject) {
+      if (parentPid) {
+        if (service.DEBUG) console.log("[UPDATER] Waiting for parent process (PID:", parentPid, ") to exit...");
+        if (statusCallback) statusCallback({ message: "Waiting for parent process to exit..." });
+        await service.waitForPid(parentPid);
+      }
+
       if (service.DEBUG) console.log("[UPDATER] Installing to:", installDirectory);
-      if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
-      if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/package.nw/node_modules/");
-      fs.remove(installDirectory + "/node_modules/").then(function () {
-        fs.remove(installDirectory + "/package.nw/node_modules/").then(function () {
-          if (service.DEBUG) console.log("[UPDATER] Copy '" + service.getAppPath() + "' to '" + installDirectory + "'");
-          fs.copy(service.getAppPath(), installDirectory).then(function () {
-            resolve(installDirectory);
-          }, reject);
-        }, reject);
-      }, reject);
+      try {
+        if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/node_modules/");
+        if (statusCallback) statusCallback({ message: "Removing node_modules..." });
+        await fs.remove(installDirectory + "/node_modules/");
+      } catch (err) {
+        console.error("[UPDATER] Error removing 'node_modules/':", err);
+      }
+
+      try {
+        if (service.DEBUG) console.log("[UPDATER] Removing old node_modules:", installDirectory + "/package.nw/node_modules/");
+        if (statusCallback) statusCallback({ message: "Removing package.nw/node_modules..." });
+        await fs.remove(installDirectory + "/package.nw/node_modules/");
+      } catch (err) {
+        console.error("[UPDATER] Error removing 'package.nw/node_modules/':", err);
+      }
+      
+      try {
+        if (service.DEBUG) console.log("[UPDATER] Copy '" + service.getAppPath() + "' to '" + installDirectory + "'");
+        if (statusCallback) statusCallback({ message: "Copying new files..." });
+        await fs.copy(service.getAppPath(), installDirectory);
+
+        if (statusCallback) statusCallback({ message: "Installation complete." });
+        resolve(installDirectory);
+      } catch (err) {
+        if (statusCallback) statusCallback({ message: "Installation failed!" });
+        reject(err);
+      }
     });
   },
 
